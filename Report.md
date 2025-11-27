@@ -39,6 +39,17 @@ As a result, all nodes ended with identical logs again.
 3. Using the same visualization, stop the current leader and two additional servers. After a few increments, pause the simulation and take a screenshot. Then resume all servers and restart the simulation. After the leader election, pause the simulation and take a screenshot. How do you explain the behavior of the system during the above exercise?
 
 Ans: 
+Screenshot 3:
+![img_3.png](img_3.png)
+Screenshot 4:
+![img_4.png](img_4.png)
+When the current leader and two additional servers are stopped, only two servers remain active in the cluster.
+Because Raft requires a majority of nodes (3 out of 5) to elect a leader, the two remaining servers cannot form a majority.
+No new leader can be elected and so the two running nodes repeatedly increase their term numbers and start new election timeouts.
+Because they never receive votes from a majority and the term continues to increase. The logs do not change, because without a leader no new log entries can be added or committed.
+
+After all nodes are resumed. All 5 servers become available again. A new leader S1 is successfully elected, because a majority is now possible. 
+All nodes synchronize to the log of the newly elected leader. Once the leader sends AppendEntries to the other servers, all nodes end up with identical logs again.
 
 # Task 2
 
@@ -124,8 +135,15 @@ Ans:
 
 1. Raft uses a leader election algorithm based on randomized timeouts and majority voting, but other leader election algorithms exist. One of them is the bully algorithm, which is described in Section 5.4.1 of the Distributed Systems book by van Steen and Tanenbaum. Imagine you update the PySyncObject library to use the bully algorithm for Raft (as described in the Distributed Systems book) instead of randomized timeouts and majority voting. What would happen in the first network partition from Task 3?
 
-Ans: 
+Ans: If Raft used the bully algorithm instead of randomized timeouts and majority voting, the behavior in the first network partition would break Raft's safety guarantee.
+    In the bully algorithm, the node with the highest ID always becomes the leader, as long as it can communicate with at least one other node.
+    During the network partition in Task 3, the smaller partition could still contain the node with the highest ID. Because the bully algorithm does not require a majority, that node would declare itself leader.
+    This leads to two leaders at the same time (one in each partition) and causes log divergence, conflicting commits, and loss of consistency.
 
 2. Why is it that Raft cannot handle Byzantine failure? Explain in your own words.
 
-Ans: 
+Ans: Raft cannot tolerate Byzantine failures because it assumes that all nodes are either correct or simply crash. 
+    In Raft, nodes must follow the protocol faithfully. They must send honest votes, replicate the correct log entries and respect term numbers. 
+    If a node behaves arbitrarily or maliciously, for example by lying about votes or pretending to be a leader.
+    Then Raft has no built-in mechanism to detect or handle this. Since Raft relies on majority voting and trust in the correctness of messages, a Byzantine node can break safety by confusing the other nodes or causing them to commit inconsistent logs. 
+    Therefore, Raft cannot guarantee correctness when nodes have Byzantine failure.
