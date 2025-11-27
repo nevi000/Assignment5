@@ -11,15 +11,18 @@ _g_kvstorage: KVStorage | None = None
 
 
 def is_str(value):
-    b = True
     #TODO: update b so that it is a boolean that indicates whether value is a string.
-    return b
+    return isinstance(value, str)
 
 
 def is_list_of_string(value):
-    b = True
     # TODO: update b so that it is a boolean that indicates whether value is a list of strings.
-    return b
+    if not isinstance(value, list):
+        return False
+    for i in value:
+        if not isinstance(i, str):
+            return False
+    return True
 
 
 def create_app(kv: KVStorage) -> Flask:

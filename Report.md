@@ -30,11 +30,33 @@ Ans:
 # Task 2
 
 1. Which server is the leader? Can there be multiple leaders? Justify your answer using the statuses from the different servers.
-Ans: 
+Ans:  curl http://localhost:8080/admin/status
+   {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 0, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node3:6002': 2, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 1, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 611, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+      curl http://localhost:8081/admin/status
+   {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node2:6001'), 'state': 2, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 1, 'next_node_idx_count': 2, 'next_node_idx_server_node3:6002': 5, 'next_node_idx_server_node1:6000': 5, 'match_idx_count': 2, 'match_idx_server_node3:6002': 4, 'match_idx_server_node1:6000': 4, 'leader_commit_idx': 4, 'uptime': 618, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+      curl http://localhost:8082/admin/status
+   {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 0, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node2:6001': 2, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 1, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 625, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+The leader is node 2, since it is the only server in state 2, and it even says so: "'leader': TCPNode('node2:6001')"
+A leader is required in Raft to receive the majority of votes during an election, thus 2 out of 3 nodes. 
+Because only one node can obtain that majority in a term, there cannot be multiple leaders simultaniously.
 
 2. Perform a PUT operation for the key "a" on the leader. Check the status of the different nodes. What changes have occurred and why (if any)?
 
-Ans:
+Ans: After performing the PUT operation for the key "a" on the leader, all 3 nodes changed their Raft statuses:
+
+The "log_len" variable (log lenght), increased from 2 to 3
+The "commit_idx" variable (commit index) increased from 4 to 5
+The "last_applied" variable (last applied index) increased from 4 to 5
+
+This happened because the leader first appends the PUT 
+
+This happens because the leader first appends the PUT operation as a new log entry to its log, 
+then replicates this entry to the followers. Once a majority of nodes (2 out of 3) have stored the entry, 
+the leader marks it as committed, and all nodes apply it to their state machines. 
+As a result, the value of key "a" is updated to ["cat", "dog"] on every server.
 
 3. Perform an APPEND operation for the key "a" on the leader. Check the status of the different nodes. What changes have occurred and why (if any)?
 
