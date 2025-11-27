@@ -63,33 +63,55 @@ Ans: After performing the PUT operation for the key "a" on the leader, all 3 nod
 The "log_len" variable (log lenght), increased from 2 to 3
 The "commit_idx" variable (commit index) increased from 4 to 5
 The "last_applied" variable (last applied index) increased from 4 to 5
+The "leader_commit_idx" variable (leader commit index) increased from 4 to 5
 
-This happened because the leader first appends the PUT operation 
-
-This happens because the leader first appends the PUT operation as a new log entry to its log, 
-then replicates this entry to the followers. Once a majority of nodes (2 out of 3) have stored the entry, 
-the leader marks it as committed, and all nodes apply it to their state machines. 
-As a result, the value of key "a" is updated to ["cat", "dog"] on every server.
+This happened because of the simple reason that the leader first appends the PUT operation as a new log entry to its log,
+later the leader replicates this entry to the followers (node 1 and node 3). 
+As soon as a majority of nodes (here 2 out of 3) have stored the entry, the leaders marks it as committed, so that all nodes apply it to their state machines.
+Finally, the value of the key "a" is updated ["cat", "dog"] on every server. 
 
 3. Perform an APPEND operation for the key "a" on the leader. Check the status of the different nodes. What changes have occurred and why (if any)?
 
 Ans: 
 
+The "commit_idx" variable (commit index) increased from 5 to 6
+The "last_applied" variable (last applied index) increased from 5 to 6
+The "leader_commit_idx" variable (leader commit index) increased from 5 to 6
+The "log_len" variable (log length) did not increase and stayed at 2. We're not 100% sure why this happened, but we think it's because of the automatic log compaction??
+
+The increases happened because the leader first appends the APPEND operation as a new logical log entry. Then it 
+replicates this entry to the followers (node 1 and node 3). Then, as soon as 2 out of 3 nodes (majority) have stored the entry, the leader marks it as committed, and all nodes apply the update to their state machines.
+
 4. Perform a GET operation for the key "a" on the leader. Check the status of the different nodes. What changes have occured and why (if any)?
 
-Ans:
-
-
+Ans: No changes occured at all. This is because the GET operation is read-only. It does not add anything to the Raft log. It does not 
+get replicated to followers, and therefore does not affect the commit or applied indices. 
+What the GET operation does, is simply returning the already commited value (now: ["cat", "dog", "mouse"]) without causing any changes in the Raft status across the nodes.
 
 # Task 3
 
 1. Shut down the server that acts as a leader. Report the status changes that you get from the servers that remain active after shutting down the leader. What is the new leader (if any)?
 
-Ans:
+Ans: After shutting down node 2 (the leader), I got these statuses: 
+
+for node 1: curl http://localhost:8080/admin/status
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 0, 'leader': TCPNode('node3:6002'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 0, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 3, 'uptime': 34, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+for node 3: curl http://localhost:8082/admin/status
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 2, 'leader': TCPNode('node3:6002'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node2:6001': 0, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 2, 'next_node_idx_server_node1:6000': 4, 'next_node_idx_server_node2:6001': 3, 'match_idx_count': 2, 'match_idx_server_node1:6000': 3, 'match_idx_server_node2:6001': 0, 'leader_commit_idx': 3, 'uptime': 40, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+So basically node 3 became the new leader. 
+The Raft term, log_len, commit_idx, last_applied, leader_commit_idx variables increased. 
+
+When the leader node, node2, was stopped, a new election for the leader was triggered.
 
 1. Perform a PUT operation for the key "a" on the new leader. Then, restart the previous leader, and indicate the changes in status for the three servers. Indicate the result of a GET operation for the key "a" to the previous leader.
 
-Ans:
+Ans: When a PUT operation was performed on the new leader, node3, the commit_idx and the last_applied variables on node 1 and node 3 increased to 4. 
+Then we restarted the previous leader again (node 2), and noticed that it had rejoined the cluster as a follower ("state": 0). Additionally it updates its terms
+to match the others and copied the missing log entry from mode 3. Also, all nodes show the same Raft state.  
+
+After performing a GET request to the previous leader: curl http://localhost:8081/keys/a, we successfully got the new value of key "a", which means that node2 caught up with the cluster succcessfully.
 
 3. Has the PUT operation been replicated? Indicate which steps lead to a new election and which ones do not. Justify your answer using the statuses returned by the servers.
 
