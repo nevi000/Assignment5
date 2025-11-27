@@ -246,10 +246,52 @@ The differences come from implementation details. PySyncObj increases the Raft t
 whereas the visualization simplifies this and keeps terms small. PySyncObj also performs internal log compaction, so log_len does not always grow as shown in the illustration. 
 These differences are expected, because the visualization is meant to teach the basic Raft concepts, while PySyncObj is a real-world library that includes optimizations and internal mechanisms not shown in the simplified model.
 
+
+
+
+
 For the second experiment, create a network partition with 3 servers (including the
 leader) on the first partition and the 2 other servers on the other one. Indicate the changes that occur in the status of a server on the first partition and a server on the second partition. Reconnect the partitions and indicate what happens. How does the implementation of Raft used by your key/value service (based on the PySyncObj library) compare to the one shown in the Secret Lives of Data illustration from Task 1?
 
-Ans: 
+Answer for the first part of the question (before reconnecting): When creating the nodes, node 2 became the leader. After creating a network partition with 3 servers (including the leader) in the first partition and 2 servers in the second partition, the behavior of the system split into two clearly different groups.
+
+In the first partition (Node 1, 2 and 5, where Node 2 is the leader), the three nodes three servers still formed a majority, so they were able to maintain quorum and continue normal Raft operation. Therefore, they are able to perfom GET, POST and APPEND operations
+
+The statuses show:
+Node 1: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 0, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 3, 'uptime': 110, 'self_code_version': 0, 'enabled_code_version': 0}
+Node 2: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node2:6001'), 'state': 2, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 4, 'next_node_idx_server_node4:6003': 4, 'next_node_idx_server_node1:6000': 4, 'next_node_idx_server_node3:6002': 4, 'next_node_idx_server_node5:6004': 4, 'match_idx_count': 4, 'match_idx_server_node4:6003': 0, 'match_idx_server_node1:6000': 3, 'match_idx_server_node3:6002': 0, 'match_idx_server_node5:6004': 3, 'leader_commit_idx': 3, 'uptime': 110, 'self_code_version': 0, 'enabled_code_version': 0}
+Node 5: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node5:6004'), 'state': 0, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 3, 'uptime': 110, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+significant values:
+has_quorum = true --> majority
+state = 2 on node 2 (leader), the others have state = 0, therefore followers
+The Raft term stays stable and low (raft_term = 3), because elections succeed immediately
+log_len, commit_idx, and last_applied all remain consistent and equal (3)
+
+The second partition (Node 3 and 4) has formed a minority and has therefore no quorum. This means they can't operate POST and APPEND operations, or do GET operations on not previously not committed data.
+
+the statuses show:
+Node 3: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 0, 'leader': None, 'has_quorum': False, 'partner_nodes_count': 4, 'partner_node_status_server_node1:6000': 0, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 2, 'commit_idx': 2, 'raft_term': 164, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 2, 'uptime': 177, 'self_code_version': 0, 'enabled_code_version': 0}
+Node 4: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node4:6003'), 'state': 1, 'leader': None, 'has_quorum': False, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node1:6000': 0, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 2, 'commit_idx': 2, 'raft_term': 164, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 2, 'uptime': 177, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+significant values:
+has_quorum = False
+leader = None (no node can become leader)
+Node4 shows state = 1 (candidate) because it keeps trying elections
+Node3 shows state = 0 (follower)
+Raft term increased to 164 due to repeated failed election attempts
+commit_idx and last_applied values remain stuck at 2
+
+--> This behavior matches Raft’s rule that a minority cannot elect a leader or commit log entries
+
+
+Answer for the second part of the question (after reconnecting): After reconnecting them, we got this result:
+
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 2, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 4, 'next_node_idx_server_node3:6002': 5, 'next_node_idx_server_node2:6001': 5, 'next_node_idx_server_node4:6003': 5, 'next_node_idx_server_node5:6004': 5, 'match_idx_count': 4, 'match_idx_server_node3:6002': 4, 'match_idx_server_node2:6001': 4, 'match_idx_server_node4:6003': 4, 'match_idx_server_node5:6004': 4, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node2:6001'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 4, 'next_node_idx_server_node4:6003': 4, 'next_node_idx_server_node1:6000': 4, 'next_node_idx_server_node3:6002': 4, 'next_node_idx_server_node5:6004': 4, 'match_idx_count': 4, 'match_idx_server_node4:6003': 0, 'match_idx_server_node1:6000': 3, 'match_idx_server_node3:6002': 0, 'match_idx_server_node5:6004': 3, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 4, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node4:6003'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 4, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node5:6004'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}%
 
 
 # Task 4
