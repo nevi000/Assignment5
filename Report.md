@@ -51,7 +51,7 @@ The "log_len" variable (log lenght), increased from 2 to 3
 The "commit_idx" variable (commit index) increased from 4 to 5
 The "last_applied" variable (last applied index) increased from 4 to 5
 
-This happened because the leader first appends the PUT 
+This happened because the leader first appends the PUT operation 
 
 This happens because the leader first appends the PUT operation as a new log entry to its log, 
 then replicates this entry to the followers. Once a majority of nodes (2 out of 3) have stored the entry, 
