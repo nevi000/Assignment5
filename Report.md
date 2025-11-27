@@ -126,19 +126,68 @@ After performing a GET request to the previous leader: curl http://localhost:808
 
 3. Has the PUT operation been replicated? Indicate which steps lead to a new election and which ones do not. Justify your answer using the statuses returned by the servers.
 
-Ans:
+Ans: Yes, the PUT operation on the new leader (node3) was successfully replicated to the whole cluster.
+We can see this because, after restarting the old leader (node2), all three nodes show the same values for:
+
+commit_idx = 4 (previously 3)
+
+last_applied = 4 (previously 3)
+
+leader = node3:6002
+
+now and a GET request to node2 returns the updated value for key "a".
+This means node2 pulled the missing log entry from node3 and applied it.
+
+Only one step yet caused a new election: stopping the original leader (node2) before in task 3.1. 
+After node2 was shut down, node1 and node3 (both followers) stopped receiving "heartbeats", which forced a new election.
+This is visible in the status output through the increase in raft_term from 1 to 3, and through node3 changing its state to leader ('state' = 2).
+
+All the other steps (performing PUT operation on the new leader, restarting the old leader) did not trigger an election.
 
 4. Shut down two servers: first shut down a server that is not the leader, then shut down the leader. Report the status changes of the remaining server and explain what happened.
 
-Ans:
+Ans: After shutting down a follower and then shutting down the leader, only one server (node1) remained running. 
+
+Its status shows: curl http://localhost:8080/admin/status
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 2, 'leader': TCPNode('node1:6000'), 'has_quorum': False, 'partner_nodes_count': 2, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node2:6001': 0, 'readonly_nodes_count': 0, 'log_len': 4, 'last_applied': 6, 'commit_idx': 6, 'raft_term': 8, 'next_node_idx_count': 2, 'next_node_idx_server_node3:6002': 7, 'next_node_idx_server_node2:6001': 7, 'match_idx_count': 2, 'match_idx_server_node3:6002': 6, 'match_idx_server_node2:6001': 6, 'leader_commit_idx': 6, 'uptime': 2690, 'self_code_version': 0, 'enabled_code_version': 0}%     
+
+Its state is = 2 (leader)
+its 'leader' variable is = node1
+The has_quorum variable = False (since no majority available)
+
+both partner nodes have status 0, which means they're offline: 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node2:6001': 0
+the Raft term increased to 8 because multiple election attempts were triggered when "heartbeats" stopped arriving.
+
+This happens because the remaining server repeatedly starts new elections after the leader fails, incrementing the term each time. 
+Eventually it elects itself as leader, but since it has no quorum (only 1 out of 3 servers is online), it cannot commit any new log entries!!!
+The system is effectively unavailable for writes until at least one more server comes back online.
 
 5. Can you perform GET, PUT, or APPEND operations in this system state? Justify your answer.
 
-Ans:
+Ans: As mentioned in 3.4, "it cannot commit any new log entries!!! The system is effectively unavailable for writes until at least one more server comes back online", meaning that PUT and POST operations are NOT possible (Since there is not majority left --> has_quorum = false)
+However, the GET operation still works, as long as it is a read from already commited data, since the node still has his local, commited state machine.
 
 6. Restart the servers and note down the changes in status. Describe what happened.
 
-Ans:
+Ans: After restarting the two offline servers (node2 and node3), the remaining node (node1) was still acting as leader. 
+When the other servers rejoined, they contacted node1, observed its higher term, and accepted it as the current leader.
+
+From the Raft status, we see:
+
+state = 2 (leader) on node1
+
+state = 0 (followers) on node2 and node3
+
+All nodes now show has_quorum = True
+
+raft_term increased to 9
+
+commit_idx, last_applied, and log_len are identical on all nodes
+(commit_idx = 9, last_applied = 9, log_len = 5)
+
+This shows that node1 successfully replicated its log to the returning servers. Both node2 and node3 executed Raft’s log catch-up process, received all missing log entries from node1, and applied them to reach the same state.
+
+In summary, the restarted servers rejoined as followers, synchronized their logs with the leader, and the cluster returned to a healthy, fully replicated state with a stable leader and working quorum.
 
 ## Network Partition
 
