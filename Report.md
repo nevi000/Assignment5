@@ -15,13 +15,26 @@ Note: Some questions require you to take screenshots. In that case, please join 
 1. What happens when Raft starts? Explain the process of electing a leader in the first
 term.
 
-Ans: 
+Ans: When Raft starts, all nodes begin in the Follower state. Each follower has a randomized election timeout.
+The first node whose timeout expires becomes a Candidate and starts a leader election. It increments the term number and sends RequestVote messages to all other nodes.
+If the candidate receives votes from a majority of nodes (at least 3 out of 5), it becomes the Leader for the current term.
+Once a leader is elected, it starts sending periodic Heartbeat messages to inform all other nodes that leadership is established.
 
 2. Perform one request on the leader, wait until the leader is committed by all servers. Pause the simulation.
 Then perform a new request on the leader. Take a screenshot, stop the leader and then resume the simulation.
 Once, there is a new leader, perform a new request and then resume the previous leader. Once, this new request is committed by all servers, pause the simulation and take a screenshot. Explain what happened?
 
 Ans: 
+Screenshot 1:
+![img_1.png](img_1.png)
+Screenshot 2:
+![img_2.png](img_2.png)
+After the leader was elected, I first sent an operation that was successfully replicated and committed on all nodes.
+When I paused the simulation and sent another request, this second log entry was only appended to the leader’s log but not committed and not replicated to a majority.
+Then I stopped the leader. Because the uncommitted entry only existed on the leader, this entry became inconsistent and was therefore discarded. A new leader was elected from the remaining nodes.
+When I performed a new request on the new leader, this entry was replicated to all nodes and committed.
+When the old leader rejoined, Raft’s log-matching and log-consistency rules forced it to delete the uncommitted entry and overwrite its log with the new leader’s committed entries.
+As a result, all nodes ended with identical logs again.
 
 3. Using the same visualization, stop the current leader and two additional servers. After a few increments, pause the simulation and take a screenshot. Then resume all servers and restart the simulation. After the leader election, pause the simulation and take a screenshot. How do you explain the behavior of the system during the above exercise?
 
