@@ -169,25 +169,32 @@ However, the GET operation still works, as long as it is a read from already com
 
 6. Restart the servers and note down the changes in status. Describe what happened.
 
-Ans: After restarting the two offline servers (node2 and node3), the remaining node (node1) was still acting as leader. 
-When the other servers rejoined, they contacted node1, observed its higher term, and accepted it as the current leader.
+Ans: After restarting the two offline servers (node2 and node3), the remaining node (node1) was still the leader. 
 
-From the Raft status, we see:
+Node1: curl http://localhost:8080/admin/status  
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 2, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 2, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 9, 'commit_idx': 9, 'raft_term': 9, 'next_node_idx_count': 2, 'next_node_idx_server_node3:6002': 10, 'next_node_idx_server_node2:6001': 10, 'match_idx_count': 2, 'match_idx_server_node3:6002': 9, 'match_idx_server_node2:6001': 9, 'leader_commit_idx': 9, 'uptime': 4005, 'self_code_version': 0, 'enabled_code_version': 0}%
 
-state = 2 (leader) on node1
+Node2: curl http://localhost:8081/admin/status  
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node2:6001'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 9, 'commit_idx': 9, 'raft_term': 9, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 9, 'uptime': 380, 'self_code_version': 0, 'enabled_code_version': 0}%
 
-state = 0 (followers) on node2 and node3
+Node 3: curl http://localhost:8082/admin/status  
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 2, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node2:6001': 2, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 9, 'commit_idx': 9, 'raft_term': 9, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 9, 'uptime': 392, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+When the other servers rejoined, they contacted node1 and accepted it as the current leader.
+From the statuses, we see that:
+
+'state' = 2 (leader) on node1
+
+'state' = 0 (followers) on node2 and node3
 
 All nodes now show has_quorum = True
 
 raft_term increased to 9
 
 commit_idx, last_applied, and log_len are identical on all nodes
-(commit_idx = 9, last_applied = 9, log_len = 5)
+(commit_idx = 9, last_applied = 9, log_len = 2)
 
-This shows that node1 successfully replicated its log to the returning servers. Both node2 and node3 executed Raft’s log catch-up process, received all missing log entries from node1, and applied them to reach the same state.
-
-In summary, the restarted servers rejoined as followers, synchronized their logs with the leader, and the cluster returned to a healthy, fully replicated state with a stable leader and working quorum.
+This shows that node1 successfully replicated its log to the returning servers. Both node2 and node3 received all missing log entries from node1, and applied them to reach the same state and became followers.
 
 ## Network Partition
 
