@@ -211,7 +211,7 @@ Node3: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:60
 Significant fields:
 both nodes have: leader = None and has_quorum = False. 
 
-The Raft term on these servers increased repeatedly (to a extremely high value of 72) as they continued to start new election attempts that could never succeed. Their commit_idx and last_applied values did not increase, since a minority partition cannot commit new log entries!
+The Raft term on these servers increased repeatedly (to a value of 72) as they continued to start new election attempts that could never succeed. Their commit_idx and last_applied values did not increase, since a minority partition cannot commit new log entries!
 
 In the second partition (node2, node4, and node5), the servers still had a majority. These three nodes elected a new leader (node5). 
 Their status shows:
@@ -232,24 +232,79 @@ Node 3: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6
 Node 4: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node4:6003'), 'state': 0, 'leader': TCPNode('node5:6004'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node5:6004': 2, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 1681, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 1711, 'self_code_version': 0, 'enabled_code_version': 0}
 Node 5: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node5:6004'), 'state': 2, 'leader': TCPNode('node5:6004'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node3:6002': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 1681, 'next_node_idx_count': 4, 'next_node_idx_server_node1:6000': 5, 'next_node_idx_server_node4:6003': 5, 'next_node_idx_server_node2:6001': 5, 'next_node_idx_server_node3:6002': 5, 'match_idx_count': 4, 'match_idx_server_node1:6000': 4, 'match_idx_server_node4:6003': 4, 'match_idx_server_node2:6001': 4, 'match_idx_server_node3:6002': 4, 'leader_commit_idx': 4, 'uptime': 1711, 'self_code_version': 0, 'enabled_code_version': 0}%
 
-After reconnecting the partitions, all five servers were able to reach each other again. As a result, every node reports has_quorum = True, and they all agree on a single leader (node5). 
-The nodes that were previously isolated in the minority partition (node1 and node3) stepped down and became followers of this leader. Their logs were then brought back into sync with the majority, 
-which is reflected by all nodes showing commit_idx = 4 and last_applied = 4. The very high Raft term is explained by the repeated, unsuccessful election attempts made by the minority partition during the split. 
-Once reconnected, all nodes accepted the current term and leader, and the system returned to a consistent state.
+After reconnecting the partitions, all five servers were able to communicate again. All nodes now report has_quorum = True. Although node 5 is still shown as the leader, this does not mean that it simply stayed leader from before the partition. 
+Instead, once the partitions reconnected, the minority nodes (which had repeatedly increased their Raft term during the split) introduced a much higher term into the system. 
+According to the Raft protocol, all nodes, including the previous majority, must accept a higher term and participate in a new leader election!! (thanks for the clarification Jeremy)
+
+The jump in raft_term from 3 to 1681 clearly shows that such a new election occurred. Node 5 happened to win this new election as well, which is why it appears as the leader after reconnection. 
+Once the leader was chosen, the previously isolated minority nodes stepped down, synchronized their logs with the leader, and commit_idx and last_applied converged to 4 on all servers. 
+After this, the system returned to a consistent and stable state.
 
 Finally, the comparison between the implementation of Raft (based on the PySyncObj library) and the one shown in the Secret Lives of Data illustration:
-
-The behavior of PySyncObj largely matches the protocol shown in The Secret Lives of Data! The majority partition elects a new leader and continues to commit log entries, 
-while the minority partition cannot make progress because it lacks a quorum. After reconnection, all nodes return to a consistent state with a single leader.
-
-The differences come from implementation details. PySyncObj increases the Raft term very quickly in the minority partition because it repeatedly starts failed elections, 
-whereas the visualization simplifies this and keeps terms small. PySyncObj also performs internal log compaction, so log_len does not always grow as shown in the illustration. 
-These differences are expected, because the visualization is meant to teach the basic Raft concepts, while PySyncObj is a real-world library that includes optimizations and internal mechanisms not shown in the simplified model.
+The overall behavior matches the Raft model shown in the visualization. The majority partition elects a leader and can continue committing entries, while the minority cannot make progress without a quorum. 
+After reconnection, the cluster eventually converges to a single leader and consistent logs.
+The differences come from real-world implementation details. In PySyncObj, nodes in the minority repeatedly start elections that always fail, which makes their Raft term increase very quickly. 
+The visualization does not show this repeated election cycle, so its terms stay small. 
+Because the minority can accumulate a much higher term, it may trigger a new leader election after reconnection, even if the majority already had a valid leader. 
+PySyncObj also performs internal optimizations such as log compaction, so the log length may differ from the simple growth shown in the animation.
+These discrepancies are expected! The visualzation presents the core ideas of Raft, while PySyncObj implements the full protocol and therefore exposes behavior that the "simplified illustration" doesnt show.
 
 For the second experiment, create a network partition with 3 servers (including the
 leader) on the first partition and the 2 other servers on the other one. Indicate the changes that occur in the status of a server on the first partition and a server on the second partition. Reconnect the partitions and indicate what happens. How does the implementation of Raft used by your key/value service (based on the PySyncObj library) compare to the one shown in the Secret Lives of Data illustration from Task 1?
 
-Ans: 
+Answer for the first part of the question (before reconnecting): When creating the nodes, node 2 became the leader. After creating a network partition with 3 servers (including the leader) in the first partition and 2 servers in the second partition, the behavior of the system split into two clearly different groups.
+
+In the first partition (Node 1, 2 and 5, where Node 2 is the leader), the three nodes three servers still formed a majority, so they were able to maintain quorum and continue normal Raft operation. Therefore, they are able to perform GET, POST and APPEND operations
+
+The statuses show:
+Node 1: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 0, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 3, 'uptime': 110, 'self_code_version': 0, 'enabled_code_version': 0}
+Node 2: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node2:6001'), 'state': 2, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 4, 'next_node_idx_server_node4:6003': 4, 'next_node_idx_server_node1:6000': 4, 'next_node_idx_server_node3:6002': 4, 'next_node_idx_server_node5:6004': 4, 'match_idx_count': 4, 'match_idx_server_node4:6003': 0, 'match_idx_server_node1:6000': 3, 'match_idx_server_node3:6002': 0, 'match_idx_server_node5:6004': 3, 'leader_commit_idx': 3, 'uptime': 110, 'self_code_version': 0, 'enabled_code_version': 0}
+Node 5: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node5:6004'), 'state': 0, 'leader': TCPNode('node2:6001'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 3, 'commit_idx': 3, 'raft_term': 3, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 3, 'uptime': 110, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+significant values:
+has_quorum = true --> majority
+state = 2 on node 2 (leader), the others have state = 0, therefore followers
+The Raft term stays stable and low (raft_term = 3), because elections succeed immediately
+log_len, commit_idx, and last_applied all remain consistent and equal (3)
+
+The second partition (Node 3 and 4) has formed a minority and has therefore no quorum. This means they can't operate POST and APPEND operations, or do GET operations on not previously not committed data.
+
+the statuses show:
+Node 3: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 0, 'leader': None, 'has_quorum': False, 'partner_nodes_count': 4, 'partner_node_status_server_node1:6000': 0, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 2, 'commit_idx': 2, 'raft_term': 164, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 2, 'uptime': 177, 'self_code_version': 0, 'enabled_code_version': 0}
+Node 4: {'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node4:6003'), 'state': 1, 'leader': None, 'has_quorum': False, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node1:6000': 0, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 2, 'last_applied': 2, 'commit_idx': 2, 'raft_term': 164, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 2, 'uptime': 177, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+significant values:
+has_quorum = False
+leader = None (no node can become leader)
+Node4 shows state = 1 (candidate) because it keeps trying elections
+Node3 shows state = 0 (follower)
+Raft term increased to 164 due to repeated failed election attempts
+commit_idx and last_applied values remain stuck at 2
+
+--> This behavior matches Raft’s rule that a minority cannot elect a leader or commit log entries
+
+
+Answer for the second part of the question (after reconnecting): After reconnecting them, we got this result:
+
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node1:6000'), 'state': 2, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 4, 'next_node_idx_server_node3:6002': 5, 'next_node_idx_server_node2:6001': 5, 'next_node_idx_server_node4:6003': 5, 'next_node_idx_server_node5:6004': 5, 'match_idx_count': 4, 'match_idx_server_node3:6002': 4, 'match_idx_server_node2:6001': 4, 'match_idx_server_node4:6003': 4, 'match_idx_server_node5:6004': 4, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node2:6001'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node5:6004': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 4, 'next_node_idx_server_node4:6003': 4, 'next_node_idx_server_node1:6000': 4, 'next_node_idx_server_node3:6002': 4, 'next_node_idx_server_node5:6004': 4, 'match_idx_count': 4, 'match_idx_server_node4:6003': 0, 'match_idx_server_node1:6000': 3, 'match_idx_server_node3:6002': 0, 'match_idx_server_node5:6004': 3, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node3:6002'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node4:6003': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 4, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node4:6003'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 2, 'partner_node_status_server_node2:6001': 0, 'partner_node_status_server_node1:6000': 2, 'partner_node_status_server_node5:6004': 0, 'readonly_nodes_count': 0, 'log_len': 4, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}
+{'version': '0.3.14', 'revision': 'deprecated', 'self': TCPNode('node5:6004'), 'state': 0, 'leader': TCPNode('node1:6000'), 'has_quorum': True, 'partner_nodes_count': 4, 'partner_node_status_server_node3:6002': 0, 'partner_node_status_server_node4:6003': 0, 'partner_node_status_server_node2:6001': 2, 'partner_node_status_server_node1:6000': 2, 'readonly_nodes_count': 0, 'log_len': 3, 'last_applied': 4, 'commit_idx': 4, 'raft_term': 990, 'next_node_idx_count': 0, 'match_idx_count': 0, 'leader_commit_idx': 4, 'uptime': 797, 'self_code_version': 0, 'enabled_code_version': 0}%
+
+After reconnecting the partitions, all five nodes can reach each other again. During the split, the minority partition (nodes 3 and 4) repeatedly attempted leader elections, which caused their Raft term to increase dramatically. 
+When communication is restored, these higher-term messages propagate to the former majority (nodes 1, 2, and 5). According to the Raft protocol, any node that receives a request with a higher term must immediately step down, 
+even if it was part of a stable majority with a functioning leader.
+Because of this, the old leader in the majority partition cannot simply continue. Instead, the entire cluster transitions to the higher term and triggers a new leader election. 
+In this election, node1 is selected as the new leader for the unified cluster. Once this election is complete, the new leader updates the slower nodes, and the minority's logs are brought back in line with the majority’s state. 
+As a result, all nodes end up with consistent values (commit_idx = 4, last_applied = 4) and the system stabilizes under the newly elected leader.
+
+Comparison between the implementation of Raft (based on the PySyncObj library) and the one shown in the Secret Lives of Data illustration:
+
+The overall behavior matches Raft’s rules, but PySyncObj differs from the Secret Lives of Data visualization in important ways. In the visualization, the minority partition does not aggressively increase its term, so the majority’s leader normally continues unchanged after reconnection. 
+In contrast, PySyncObj’s minority nodes repeatedly start elections during the split, which rapidly increases their terms. When the partitions reconnect, these higher terms force the entire cluster to participate in a new election, even if the majority already had a leader. 
+This implementation detail is not shown in the simplified animation, but it is consistent with the Raft specification: any node encountering a higher term must immediately step down. PySyncObj exposes these internal behaviors more explicitly, so term jumps and forced re-elections occur in practice
+
 
 
 # Task 4
