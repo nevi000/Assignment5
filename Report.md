@@ -26,9 +26,9 @@ Once, there is a new leader, perform a new request and then resume the previous 
 
 Ans: 
 Screenshot 1:
-![img_1.png](img_1.png)
+![task1_q2_1.png](task1_q2_1.png)
 Screenshot 2:
-![img_2.png](img_2.png)
+![task1_q2_2.png](task1_q2_2.png)
 After the leader was elected, I first sent an operation that was successfully replicated and committed on all nodes.
 When I paused the simulation and sent another request, this second log entry was only appended to the leader’s log but not committed and not replicated to a majority.
 Then I stopped the leader. Because the uncommitted entry only existed on the leader, this entry became inconsistent and was therefore discarded. A new leader was elected from the remaining nodes.
@@ -40,9 +40,9 @@ As a result, all nodes ended with identical logs again.
 
 Ans: 
 Screenshot 3:
-![img_3.png](img_3.png)
+![task1_q3_1.png](task1_q3_1.png)
 Screenshot 4:
-![img_4.png](img_4.png)
+![task1_q3_2.png](task1_q3_2.png)
 When the current leader and two additional servers are stopped, only two servers remain active in the cluster.
 Because Raft requires a majority of nodes (3 out of 5) to elect a leader, the two remaining servers cannot form a majority.
 No new leader can be elected and so the two running nodes repeatedly increase their term numbers and start new election timeouts.
