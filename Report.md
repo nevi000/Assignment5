@@ -303,7 +303,7 @@ Comparison between the implementation of Raft (based on the PySyncObj library) a
 
 The overall behavior matches Raft’s rules, but PySyncObj differs from the Secret Lives of Data visualization in important ways. In the visualization, the minority partition does not aggressively increase its term, so the majority’s leader normally continues unchanged after reconnection. 
 In contrast, PySyncObj’s minority nodes repeatedly start elections during the split, which rapidly increases their terms. When the partitions reconnect, these higher terms force the entire cluster to participate in a new election, even if the majority already had a leader. 
-This implementation detail is not shown in the simplified animation, but it is consistent with the Raft specification: any node encountering a higher term must immediately step down. PySyncObj exposes these internal behaviors more explicitly, so term jumps and forced re-elections occur in practice.
+This implementation detail is not shown in the simplified animation, but it is consistent with the Raft specification: any node encountering a higher term must immediately step down. PySyncObj exposes these internal behaviors more explicitly, so term jumps and forced re-elections occur in practice
 
 
 
