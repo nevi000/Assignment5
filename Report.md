@@ -88,7 +88,7 @@ Ans:
 The "commit_idx" variable (commit index) increased from 5 to 6
 The "last_applied" variable (last applied index) increased from 5 to 6
 The "leader_commit_idx" variable (leader commit index) increased from 5 to 6
-The "log_len" variable (log length) did not increase and stayed at 2. We're not 100% sure why this happened, but we think it's because of the automatic log compaction??
+The "log_len" variable (log length) did not increase and stayed at 2. This is most likely due to PySyncObj's internal snapshotting and log truncation mechanism, which keeps the visible log shot even though new entries are committed.
 
 The increases happened because the leader first appends the APPEND operation as a new logical log entry. Then it 
 replicates this entry to the followers (node 1 and node 3). Then, as soon as 2 out of 3 nodes (majority) have stored the entry, the leader marks it as committed, and all nodes apply the update to their state machines.
